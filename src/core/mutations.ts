@@ -13,6 +13,7 @@ export type Mutation =
   // Seat map
   | { type: 'SEATMAP_IMPORT'; seats: Seat[]; replace: boolean }
   | { type: 'SEAT_UPDATE'; seat_label: string; patch: Partial<Seat> }
+  | { type: 'SEATS_BULK_UPDATE'; seat_labels: string[]; patch: Partial<Seat> }
   // Buyers
   | { type: 'BUYER_IMPORT'; buyers: Buyer[]; source_channel: string }
   // Assignments
@@ -39,6 +40,7 @@ export function describeMutation(m: Mutation): string {
     case 'EVENT_SETTINGS_UPDATE': return 'Updated event settings';
     case 'SEATMAP_IMPORT': return `${m.replace ? 'Replaced' : 'Added'} seat map (${m.seats.length} seats)`;
     case 'SEAT_UPDATE': return `Edited seat ${m.seat_label}`;
+    case 'SEATS_BULK_UPDATE': return `Edited ${m.seat_labels.length} seats (${Object.keys(m.patch).join(', ')})`;
     case 'BUYER_IMPORT': return `Imported ${m.buyers.length} buyers (${m.source_channel})`;
     case 'RUN_COMMIT': return `Auto-assignment run #${m.run.version} (${m.pairs.length} seats)`;
     case 'ASSIGN': return `Assigned ${m.ticket_code} to ${m.seat_label}`;
@@ -104,6 +106,17 @@ export function applyMutation(
       }
       seats[m.seat_label] = next;
       return { ...state, seats, seatOrder };
+    }
+
+    case 'SEATS_BULK_UPDATE': {
+      // bulk edits never rename seats — keys must stay stable for assignments
+      const { seat_label: _ignored, ...patch } = m.patch;
+      const seats = { ...state.seats };
+      for (const l of m.seat_labels) {
+        const prev = seats[l];
+        if (prev) seats[l] = { ...prev, ...patch };
+      }
+      return { ...state, seats };
     }
 
     case 'BUYER_IMPORT': {

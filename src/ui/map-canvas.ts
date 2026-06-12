@@ -29,6 +29,8 @@ export interface SeatMapApi {
   setHighlight: (labels: Set<string>) => void;
   selected: () => string | null;
   select: (label: string | null) => void;
+  setMode: (mode: 'pan' | 'select') => void;
+  setColorBy: (colorBy: 'status' | 'category') => void;
 }
 
 export function createSeatMap(
@@ -36,6 +38,7 @@ export function createSeatMap(
   opts: {
     colorBy?: 'status' | 'category';
     onSelect?: (label: string | null) => void;
+    onBoxSelect?: (labels: string[]) => void;
     showLegend?: boolean;
   } = {},
 ): SeatMapApi {
@@ -51,6 +54,8 @@ export function createSeatMap(
   let selected: string | null = null;
   let highlight = new Set<string>();
   let colorBy: 'status' | 'category' = opts.colorBy ?? 'status';
+  let mode: 'pan' | 'select' = 'pan';
+  let marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
 
   const categoryColor = (() => {
     const map = new Map<string, string>();
@@ -140,8 +145,10 @@ export function createSeatMap(
 
       let fill: string;
       if (a) fill = ASSIGN_COLORS[a.status];
-      else if (colorBy === 'category' && s.status === 'available') fill = categoryColor(s.category || '?');
-      else fill = STATUS_COLORS[s.status] ?? STATUS_COLORS.available;
+      else if (colorBy === 'category' && s.status === 'available') {
+        // no category yet = grey so unpainted areas stand out
+        fill = s.category ? categoryColor(s.category) : '#9ca3af';
+      } else fill = STATUS_COLORS[s.status] ?? STATUS_COLORS.available;
 
       ctx.fillStyle = fill;
       ctx.beginPath();
@@ -190,6 +197,37 @@ export function createSeatMap(
       }
     }
     ctx.restore();
+
+    if (marquee) {
+      const mx = Math.min(marquee.x0, marquee.x1);
+      const my = Math.min(marquee.y0, marquee.y1);
+      const mw = Math.abs(marquee.x1 - marquee.x0);
+      const mh = Math.abs(marquee.y1 - marquee.y0);
+      ctx.fillStyle = 'rgba(37, 99, 235, 0.08)';
+      ctx.fillRect(mx, my, mw, mh);
+      ctx.strokeStyle = '#2563eb';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(mx, my, mw, mh);
+      ctx.setLineDash([]);
+    }
+  }
+
+  function seatsInMarquee(): string[] {
+    const state = getState();
+    if (!state || !marquee) return [];
+    const wx0 = (Math.min(marquee.x0, marquee.x1) - tx) / scale;
+    const wy0 = (Math.min(marquee.y0, marquee.y1) - ty) / scale;
+    const wx1 = (Math.max(marquee.x0, marquee.x1) - tx) / scale;
+    const wy1 = (Math.max(marquee.y0, marquee.y1) - ty) / scale;
+    const out: string[] = [];
+    for (const label of state.seatOrder) {
+      const s = state.seats[label];
+      const cx = s.grid_x * PITCH + SIZE / 2;
+      const cy = s.grid_y * PITCH + SIZE / 2;
+      if (cx >= wx0 && cx <= wx1 && cy >= wy0 && cy <= wy1) out.push(label);
+    }
+    return out;
   }
 
   // ── interactions ──
@@ -199,6 +237,14 @@ export function createSeatMap(
   let lastY = 0;
 
   canvas.addEventListener('pointerdown', (e) => {
+    if (mode === 'select') {
+      const rect = canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      marquee = { x0: px, y0: py, x1: px, y1: py };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
     dragging = true;
     moved = false;
     lastX = e.clientX;
@@ -206,6 +252,14 @@ export function createSeatMap(
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (marquee) {
+      const rect = canvas.getBoundingClientRect();
+      marquee.x1 = e.clientX - rect.left;
+      marquee.y1 = e.clientY - rect.top;
+      tooltip.style.display = 'none';
+      draw();
+      return;
+    }
     if (dragging) {
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
@@ -235,13 +289,27 @@ export function createSeatMap(
       tooltip.style.display = 'block';
       tooltip.style.left = `${Math.min(e.clientX - rect.left + 14, rect.width - 180)}px`;
       tooltip.style.top = `${e.clientY - rect.top + 14}px`;
-      canvas.style.cursor = 'pointer';
+      canvas.style.cursor = mode === 'select' ? 'crosshair' : 'pointer';
     } else {
       tooltip.style.display = 'none';
-      canvas.style.cursor = 'grab';
+      canvas.style.cursor = mode === 'select' ? 'crosshair' : 'grab';
     }
   });
   canvas.addEventListener('pointerup', (e) => {
+    if (marquee) {
+      const tiny = Math.abs(marquee.x1 - marquee.x0) < 5 && Math.abs(marquee.y1 - marquee.y0) < 5;
+      if (tiny) {
+        // a click in select mode still selects a single seat
+        const s = hit(e.clientX, e.clientY);
+        selected = s ? s.seat_label : null;
+        opts.onSelect?.(selected);
+      } else {
+        opts.onBoxSelect?.(seatsInMarquee());
+      }
+      marquee = null;
+      draw();
+      return;
+    }
     dragging = false;
     if (!moved) {
       const s = hit(e.clientX, e.clientY);
@@ -273,20 +341,21 @@ export function createSeatMap(
   const resizeObs = new ResizeObserver(() => draw());
   resizeObs.observe(wrap);
 
+  let legendEl: HTMLElement | null = null;
   if (opts.showLegend !== false) {
-    wrap.append(
-      h(
-        'div',
-        { class: 'map-legend' },
-        legendItem(STATUS_COLORS.available, 'Empty'),
-        legendItem(ASSIGN_COLORS.assigned, 'Assigned'),
-        legendItem(ASSIGN_COLORS.approved, 'Approved'),
-        legendItem(ASSIGN_COLORS.uploaded, 'Uploaded'),
-        legendItem(STATUS_COLORS.blocked, 'Blocked'),
-        legendItem(STATUS_COLORS.restricted, 'Restricted view'),
-        legendItem(STATUS_COLORS.held, 'Held'),
-      ),
+    legendEl = h(
+      'div',
+      { class: 'map-legend' },
+      legendItem(STATUS_COLORS.available, 'Empty'),
+      legendItem(ASSIGN_COLORS.assigned, 'Assigned'),
+      legendItem(ASSIGN_COLORS.approved, 'Approved'),
+      legendItem(ASSIGN_COLORS.uploaded, 'Uploaded'),
+      legendItem(STATUS_COLORS.blocked, 'Blocked'),
+      legendItem(STATUS_COLORS.restricted, 'Restricted view'),
+      legendItem(STATUS_COLORS.held, 'Held'),
     );
+    legendEl.style.display = colorBy === 'category' ? 'none' : '';
+    wrap.append(legendEl);
   }
 
   function legendItem(color: string, label: string): HTMLElement {
@@ -303,6 +372,15 @@ export function createSeatMap(
     selected: () => selected,
     select: (label) => {
       selected = label;
+      draw();
+    },
+    setMode: (m) => {
+      mode = m;
+      canvas.style.cursor = m === 'select' ? 'crosshair' : 'grab';
+    },
+    setColorBy: (c) => {
+      colorBy = c;
+      if (legendEl) legendEl.style.display = c === 'category' ? 'none' : '';
       draw();
     },
   };

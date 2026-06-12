@@ -72,6 +72,26 @@ describe('mutation reducer', () => {
     expect(state.assignments['T1']).toBeUndefined();
   });
 
+  it('SEATS_BULK_UPDATE patches many seats in one mutation, never renames', () => {
+    let state = applyMutation(undefined, { type: 'EVENT_CREATE', info }, { at: 't' });
+    state = applyMutation(state, {
+      type: 'SEATMAP_IMPORT',
+      seats: [seat('S1', 0, 0, ''), seat('S2', 1, 0, ''), seat('S3', 2, 0, '')],
+      replace: false,
+    }, { at: 't' });
+    state = applyMutation(state, {
+      type: 'SEATS_BULK_UPDATE',
+      seat_labels: ['S1', 'S2', 'MISSING'],
+      patch: { category: 'GOLD', status: 'held', seat_label: 'HACK' },
+    }, { at: 't' });
+    expect(state.seats['S1'].category).toBe('GOLD');
+    expect(state.seats['S1'].status).toBe('held');
+    expect(state.seats['S1'].seat_label).toBe('S1'); // rename ignored
+    expect(state.seats['S2'].category).toBe('GOLD');
+    expect(state.seats['S3'].category).toBe(''); // not selected — untouched
+    expect(state.seatOrder).toEqual(['S1', 'S2', 'S3']);
+  });
+
   it('re-import upserts buyers without duplicating', () => {
     let state = applyMutation(undefined, { type: 'EVENT_CREATE', info }, { at: 't' });
     state = applyMutation(state, { type: 'BUYER_IMPORT', buyers: [buyer('T1', 'B1', 0)], source_channel: 'wave1' }, { at: 't' });
