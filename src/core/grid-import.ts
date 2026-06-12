@@ -6,10 +6,11 @@ import { parseDelimited } from './csv';
 import { normalizeCategory, type Seat } from './types';
 
 export interface GridParseOptions {
-  mode: 'labels' | 'numbers';
-  // mode 'numbers' only:
-  category?: string; // applies to the whole pasted block
-  rowPrefix?: string; // venue row names become e.g. A1, A2... from top
+  mode: 'labels' | 'numbers' | 'refs';
+  // mode 'numbers' and 'refs': category applies to the whole pasted block
+  category?: string;
+  // mode 'numbers' only: row name prefix (rows become A1, A2…)
+  rowPrefix?: string;
   // priority direction: true = first pasted row is closest to the stage (best seats)
   firstRowIsFront: boolean;
   // when appending to an existing map, place below it
@@ -81,6 +82,8 @@ export function buildSeatsFromGrid(cells: string[][], opts: GridParseOptions): G
         let category: string;
         let rowName: string;
 
+        let displayLabel: string | undefined;
+
         if (opts.mode === 'labels') {
           label = cell;
           const parts = cell.split('-').map((p) => p.trim());
@@ -95,6 +98,13 @@ export function buildSeatsFromGrid(cells: string[][], opts: GridParseOptions): G
             category = '';
             rowName = `R${seatRowIndex}`;
           }
+        } else if (opts.mode === 'refs') {
+          // cell contains a seat reference like "A-13" — category supplied separately
+          category = normalizeCategory(opts.category || '');
+          const lastDash = cell.lastIndexOf('-');
+          rowName = lastDash > 0 ? cell.slice(0, lastDash) : `R${seatRowIndex}`;
+          label = `${category}-${cell}`;
+          displayLabel = cell; // exported label is the raw cell, not the prefixed key
         } else {
           category = normalizeCategory(opts.category || '');
           rowName = `${opts.rowPrefix || 'R'}${seatRowIndex}`;
@@ -108,6 +118,7 @@ export function buildSeatsFromGrid(cells: string[][], opts: GridParseOptions): G
 
         seats.push({
           seat_label: label,
+          ...(displayLabel !== undefined ? { display_label: displayLabel } : {}),
           category,
           priority: priorityRow,
           status: 'available',
@@ -140,7 +151,7 @@ export function buildSeatsFromGrid(cells: string[][], opts: GridParseOptions): G
       message: `${badLabels.length} cell(s) don't look like full seat labels (expected CATEGORY-ROW-NUMBER, e.g. GOLD-A1-45). Examples: ${badLabels.slice(0, 5).join(', ')}. If your cells only contain seat numbers, choose "Cells contain seat numbers" instead.`,
     });
   }
-  if (opts.mode === 'numbers' && !normalizeCategory(opts.category || '')) {
+  if ((opts.mode === 'numbers' || opts.mode === 'refs') && !normalizeCategory(opts.category || '')) {
     problems.push({ level: 'error', message: 'Please enter the ticket category for this block (e.g. GOLD).' });
   }
 

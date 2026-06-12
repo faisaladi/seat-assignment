@@ -146,20 +146,25 @@ export function viewSeatMap(store: Store): { el: HTMLElement; update: () => void
   function renderImportCard(replace: boolean): HTMLElement {
     const pasteArea = h('textarea', { class: 'paste-area', placeholder: 'Paste your seat cells here…' });
     const modeSel = h('select', {},
-      h('option', { value: 'labels' }, 'Cells contain full seat labels (e.g. GOLD-A1-45)'),
-      h('option', { value: 'numbers' }, 'Cells contain seat numbers only (e.g. 45)'),
+      h('option', { value: 'labels' }, 'Cells have full labels (e.g. GOLD-A1-45)'),
+      h('option', { value: 'refs' }, 'Cells have seat references (e.g. A-13) — I\'ll enter the category'),
+      h('option', { value: 'numbers' }, 'Cells have seat numbers only (e.g. 45)'),
     );
     const catInput = h('input', { type: 'text', placeholder: 'e.g. GOLD' });
     const rowPrefixInput = h('input', { type: 'text', value: 'A', placeholder: 'A' });
-    const numbersOnlyFields = h('div', { class: 'row2', style: 'display:none' },
-      h('label', { class: 'field' }, h('span', {}, 'Ticket category for this block *'), catInput,
-        h('small', {}, 'All pasted seats get this category. Paste each category as its own block.')),
-      h('label', { class: 'field' }, h('span', {}, 'Row name prefix'), rowPrefixInput,
-        h('small', {}, 'Rows are named from the top: A1, A2, A3…')),
-    );
-    modeSel.addEventListener('change', () => {
-      numbersOnlyFields.style.display = modeSel.value === 'numbers' ? 'grid' : 'none';
-    });
+    const categoryField = h('label', { class: 'field', style: 'display:none' },
+      h('span', {}, 'Ticket category for this block *'), catInput,
+      h('small', {}, 'All pasted seats get this category. Paste each category as its own block.'));
+    const rowPrefixField = h('label', { class: 'field', style: 'display:none' },
+      h('span', {}, 'Row name prefix'), rowPrefixInput,
+      h('small', {}, 'Rows are named from the top: A1, A2, A3…'));
+    const extraFields = h('div', { class: 'row2' }, categoryField, rowPrefixField);
+    const updateFields = () => {
+      const m = modeSel.value;
+      categoryField.style.display = (m === 'numbers' || m === 'refs') ? '' : 'none';
+      rowPrefixField.style.display = m === 'numbers' ? '' : 'none';
+    };
+    modeSel.addEventListener('change', updateFields);
     const frontCheck = h('input', { type: 'checkbox', checked: true });
     const previewBox = h('div', {});
 
@@ -174,7 +179,7 @@ export function viewSeatMap(store: Store): { el: HTMLElement; update: () => void
       }
       const cells = parseGridText(text);
       parsed = buildSeatsFromGrid(cells, {
-        mode: modeSel.value as 'labels' | 'numbers',
+        mode: modeSel.value as 'labels' | 'numbers' | 'refs',
         category: catInput.value,
         rowPrefix: rowPrefixInput.value || 'R',
         firstRowIsFront: frontCheck.checked,
@@ -233,7 +238,7 @@ export function viewSeatMap(store: Store): { el: HTMLElement; update: () => void
           h('strong', {}, 'How to copy from Google Sheets: '),
           '1) Open the sheet with your seat layout. 2) Select all the seat cells (one cell = one seat, leave aisles/walkways as empty cells, one sheet row = one venue row). 3) Copy (Ctrl/Cmd+C) and paste in the box below.'),
         h('label', { class: 'field' }, h('span', {}, 'What is written in each cell?'), modeSel),
-        numbersOnlyFields,
+        extraFields,
         h('label', { class: 'field', style: 'display:flex;align-items:center;gap:8px' },
           frontCheck, h('span', { style: 'margin:0' }, 'The first pasted row is closest to the stage (best seats)')),
         h('label', { class: 'field' }, h('span', {}, 'Your seat grid *'), pasteArea),

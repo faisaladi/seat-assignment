@@ -18,7 +18,8 @@ export interface EventInfo {
 }
 
 export interface Seat {
-  seat_label: string; // unique within event — the Retool contract key
+  seat_label: string; // unique internal key (may include category prefix)
+  display_label?: string; // what's exported to Retool; falls back to seat_label when absent
   category: string; // normalized, e.g. GOLD
   priority: number; // 1 = best seat, filled first
   status: SeatStatus;

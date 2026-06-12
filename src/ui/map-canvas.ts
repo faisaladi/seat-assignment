@@ -181,9 +181,9 @@ export function createSeatMap(
       }
 
       if (scale >= 0.75) {
-        const num = label.match(/\d+$/)?.[0] ?? '';
+        const num = s.display_label ?? label.match(/\d+$/)?.[0] ?? '';
         ctx.fillStyle = 'rgba(255,255,255,0.95)';
-        ctx.font = `${num.length > 2 ? 8 : 10}px system-ui`;
+        ctx.font = `${num.length > 3 ? 7 : num.length > 2 ? 8 : 10}px system-ui`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(num, x + SIZE / 2, y + SIZE / 2 + 1);

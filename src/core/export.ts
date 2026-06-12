@@ -43,7 +43,8 @@ export function buildRetoolUpload(
     if (!a || a.status !== 'approved') continue;
     const b = state.buyers[tc];
     if (!b) continue;
-    rows.push([state.info.event_uid, b.transaction_id, b.booking_code, b.ticket_code, a.seat_label, notes]);
+    const exportLabel = state.seats[a.seat_label]?.display_label ?? a.seat_label;
+    rows.push([state.info.event_uid, b.transaction_id, b.booking_code, b.ticket_code, exportLabel, notes]);
     ticketCodes.push(tc);
   }
   const delimiter = format === 'tsv' ? '\t' : ',';
