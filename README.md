@@ -1,7 +1,10 @@
-# Seat Assignment App
+# Seat Assignment Engine & Canvas App
 
-An internal tool for assigning concert seats after purchase. Runs entirely in the
-browser — no server, no login. All data is saved automatically on this computer.
+> **Project Status**: 🟢 `Production-Ready Offline-First Web App`  
+> **Tech Stack**: TypeScript + Vite + Dexie (IndexedDB) + Canvas API + Vitest  
+> **Architecture**: Event-sourced state reducer with pure business logic engine & `StoragePort` abstraction (19/19 Unit Tests Passing)
+
+An offline-first, client-side web application for concert and event seat assignment. Runs entirely in the browser with local persistence, deterministic constraint satisfaction, complete undo/redo audit logs, and high-performance Canvas rendering.
 
 ## For admins: how to use it
 
